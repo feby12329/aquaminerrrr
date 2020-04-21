@@ -1,0 +1,37 @@
+language: c++
+os: linux
+env:
+  global:
+  - LD_LIBRARY_PATH=/usr/local/lib
+  - OVERRIDE_CC="CC=gcc-8" OVERRIDE_CXX="CXX=g++-8"
+addons:
+  apt:
+    config:
+      retries: true
+    packages:
+    - libc-ares-dev
+    - libjsoncpp-dev
+    - build-essential
+    - zlib1g-dev
+script:
+- bash .travis.bash
+before_deploy:
+# Set up git user name and tag this commit
+- git config --local user.name "travis-robot"
+- git config --local user.email "aerth-robot@users.noreply.github.com"
+- export TRAVIS_TAG=${TRAVIS_TAG:-autobuild-v$(cat VERSION)-$(git log --format=%h -1)}
+- git tag $TRAVIS_TAG
+deploy:
+  skip_cleanup: true
+  provider: releases
+  api_key:
+    secure: UQfxYB/o5MSnYDjubuPE5odwHx1QS2e0v/PnIXM/GqOHXLq4QYDeojRj7TaFKJBdiemgPF6vX06OiOGoDgOpeiCfWQtlPojHS0cj+AiZozVczTcrm2g0Ujqb26WH9gCmQFt/m0DcfsfJQxegxtw/+uLTAopRYKvYtaMZPr2DUBN/2K5wxdLVk9RDq7nEM2YgdHpfk9foclM4Fhf6m4et5eGub9+AUBhkGLuhGH0k+qgKCjLqXyJJV486l4KWRUtWE93d8xjiJNDHh0IdHKayxek/CnvP5dFrQxzNY6oTiAA81F282KgBY2fuw46QJn+JUtpLD0KJVw81OtAF8+j2EtOe6ZucFf70CqFw3KF2sMwssN8uudDIyGU8m6t+Dvf6umvkoiiPRB2OE88KLRE/BzXhkRl3CNQt3FNmtW10UN3FEs/d1/OKnfPBHk/ye4B0o2vUOGnBidFp/zRAs7kp8HC0AeVrnPp3qv1/a9jtmXpfrb0YPRypJC4G2A9fNg0Ji1+v+mmLPbVLynAR+tn/Wn4o21HcKeOOJla1rnY/Bt2w0+OsJSlJrwHJF8xkyJrAPN53r+6EmpO01BcctnOHsBIiw55kbViIWVpjjBbyy893pjeM6hwfkl5bTQRFFa1L8Qht6hM1CZEdnd1rtSd2GqbV9JiGKq40+KgLRR0WL6M=
+  file: aquachain-miner-linux-amd64.tar.gz
+  on:
+    repo: aerth/aquaminer
+
+notifications:
+  email:
+    on_success: change
+    on_failure: change
+
