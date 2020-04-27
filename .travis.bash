@@ -5,7 +5,7 @@ cat /etc/os-release
 # kind of not important anymore
 #sudo apt remove libssl-dev -y
 #sudo apt install curl ca-certificates wget tree -y
-sudo apt install -y wget tree
+sudo apt install -y wget tree file 
 
 # build curl lite
 bash setup_libs.bash
