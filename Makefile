@@ -13,14 +13,16 @@ SRCDIR := src
 OBJDIR := _obj
 
 # 'make config=avx2' to build avx2 version
-suffix := -plain
+suffix := -unknown
 ifeq ($(config), avx2)
 CFLAGS += -mavx2
 suffix := -avx2
-endif
-ifeq ($(config), avx)
+else ifeq ($(config), avx)
 CFLAGS += -mavx
 suffix := -avx
+else
+CFLAGS := -march=native
+suffix := -plain
 endif
 $(info Building: $(NAME)-$(VERSION)$(suffix))
 
