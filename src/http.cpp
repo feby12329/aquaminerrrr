@@ -15,28 +15,79 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include <curl/curl.h>
-#include <jsoncpp/json/json.h>
-#include <chrono>
-#include <condition_variable>
-#include <cstdio>  // printf
-#include <iostream>
-#include <mutex>
-#include <thread>
-#include <vector>
-#include "aqua.hpp"
-#include "miner.hpp"
-using namespace std;
+#include <bits/exception.h>       // for exception
+#include <curl/curl.h>            // for curl_easy_setopt
+#include <jsoncpp/json/config.h>  // for JSONCPP_STRING
+#include <jsoncpp/json/reader.h>  // for CharReader, CharRea...
+#include <jsoncpp/json/value.h>   // for Value, arrayValue
+#include <jsoncpp/json/writer.h>  // for operator<<
+#include <spdlog/fmt/fmt.h>       // for format_to
+#include <stdint.h>               // for uint8_t
+#include <string.h>               // for strcmp, strcpy, strlen
+
+#include <atomic>    // for atomic_ullong, __at...
+#include <chrono>    // for duration, high_reso...
+#include <cstdio>    // for printf, sprintf
+#include <iostream>  // for operator<<, endl
+#include <memory>    // for __shared_ptr_access
+#include <mutex>     // for mutex
+#include <stdexcept>
+#include <string>   // for string, operator<<
+#include <thread>   // for sleep_for
+#include <utility>  // for move
+
+#include "aqua.hpp"                               // for decodeHex, computeD...
+#include "miner.hpp"                              // for Miner, WorkPacket
+#include "spdlog/details/log_msg-inl.h"           // for log_msg::log_msg
+#include "spdlog/logger.h"                        // for logger
+#include "spdlog/sinks/ansicolor_sink-inl.h"      // for ansicolor_sink::pri...
+#include "spdlog/sinks/stdout_color_sinks-inl.h"  // for stdout_color_mt
+
+#ifdef SCHEDPOL
 #define handle_error_en(en, msg) \
   do {                           \
     errno = en;                  \
     perror(msg);                 \
     exit(EXIT_FAILURE);          \
   } while (0)
+#endif
+
+#define GETWORK 1
+#define SUBMITWORK 2
+
+using std::atomic_ullong;
+using std::cout;
+using std::endl;
+using std::string;
 
 atomic_ullong sharesSubmitted;
 atomic_ullong sharesValid;
 atomic_ullong errCount;
+
+Miner::Miner(const std::string url, const uint8_t nThreads, const uint8_t nCPU,
+             const bool verboseLogs, const bool bench) {
+  poolUrl = url;
+  numThreads = nThreads;
+  num_cpus = nCPU;
+  verbose = verboseLogs;
+  benching = bench;
+  this->currentWork = new WorkPacket();
+  this->logger = spdlog::stderr_color_mt("MINER");
+  this->getworklog = spdlog::stderr_color_mt("GETWORK");
+
+  this->getworkcurl = curl_easy_init();
+  this->submitcurl = curl_easy_init();
+  this->initcurl(this->getworkcurl, GETWORK);
+  this->initcurl(this->submitcurl, SUBMITWORK);
+}
+
+Miner::~Miner() {
+  printf("Miner dead!\n");
+  curl_easy_cleanup(this->getworkcurl);
+  curl_easy_cleanup(this->submitcurl);
+}
+
+int aquahash_version(void *out, const void *in, uint32_t mem);
 
 void Miner::getworkThread(const char *thread_id) {
   auto logger = spdlog::stdout_color_mt("HTTP");
@@ -64,13 +115,55 @@ void Miner::getworkThread(const char *thread_id) {
   logger->info("Thread {} is now at priority {} ({})", thread_id,
                sch.sched_priority, policy);
 #endif
-  auto t1 = std::chrono::high_resolution_clock::now();
-  unsigned long long numHashesSinceLast = 0;
-  auto ltime = std::chrono::high_resolution_clock::now();
-  float fps;
-  unsigned long long totalHash = 0;
+
   this->numTries = 0;
+  typedef std::chrono::high_resolution_clock Time;
+  auto t1 = Time::now();
+  auto ltime = Time::now();
+  unsigned long long totalHash = 0;
+  unsigned long long numHashesSinceLast = 0;
+  float fps = 0.0;
   char fpsbuf[100];
+
+  // bench mark 1M and exit
+  if (benching) {
+    workmu.lock();
+    uint8_t in[40];
+    uint8_t out[32];
+    this->currentWork->version = '2';
+    aquahash_version(out, in, 1);
+    printf("Aquahash v2 Benchmark zero[32]=");
+    print_hex(out, 32);
+
+    logger->info("Starting 1M hashes");
+    for (int i = 0; i < 31; i = i + 2) {
+      this->currentWork->inputStr[i] = '1';
+      this->currentWork->inputStr[i + 2] = '1';
+    }
+    workmu.unlock();
+    // t1
+    t1 = std::chrono::high_resolution_clock::now();
+    // wait for hashes
+    while (totalHash < 1000000) {
+      totalHash += this->numTries;
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+
+    // t2
+    std::chrono::duration<double> dur =
+        std::chrono::high_resolution_clock::now() - t1;
+
+    workmu.lock();
+    this->currentWork->inputStr[0] = '!';  // triggers a work copy
+    this->currentWork->version = '!';      // kills the miners (if benching)
+    workmu.unlock();
+
+    // print hashrate and duration
+    double sec = dur.count();
+    printf("benchmark completed %llu hashes in %4.4f seconds (%4.4f kHs/sec)\n",
+           totalHash, sec, totalHash / sec / 1000);
+    return;
+  }
   while (true) {
     if (!this->getwork()) {
       logger->warn("getwork() failed");
@@ -78,6 +171,7 @@ void Miner::getworkThread(const char *thread_id) {
     // print hashrate
     t1 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> durationSinceLast = t1 - ltime;
+    ltime = t1;
 
     numHashesSinceLast = this->numTries;
     this->numTries = 0;
@@ -90,22 +184,25 @@ void Miner::getworkThread(const char *thread_id) {
     // calculate hashrate
     totalHash += numHashesSinceLast;
     fps = static_cast<double>(numHashesSinceLast) / durationSinceLast.count();
-    if (fps != 0) {
-      unsigned long long submitted = sharesSubmitted;
-      unsigned long long submittedValid = sharesValid;
-      unsigned long long errs = errCount;
-      unsigned long long rejected = submitted - submittedValid;
-      sprintf(fpsbuf,
-              "Aquahash v%c [%04.4f kH/s] (%010llu) Valid=%llu Bad=%llu",
-              this->currentWork->version, fps / 1000.00, totalHash,
-              submittedValid, rejected);
-      this->logger->info("{}", fpsbuf);
-
-      if (errs != 0) {
-        logger->warn("Pool HTTP Errors = %lu\n", errs);
+    if (fps == 0) {
+      if (totalHash != 0) {
+        logger->warn("can't calculate hashrate?");
       }
+      std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+      continue;
     }
-    ltime = t1;
+    unsigned long long submitted = sharesSubmitted;
+    unsigned long long submittedValid = sharesValid;
+    unsigned long long errs = errCount;
+    unsigned long long rejected = submitted - submittedValid;
+    sprintf(fpsbuf, "Aquahash v%c [%04.4f kH/s] (%010llu) Valid=%llu Bad=%llu",
+            this->currentWork->version, fps / 1000.00, totalHash,
+            submittedValid, rejected);
+    this->logger->info("{}", fpsbuf);
+
+    if (errs != 0) {
+      logger->warn("Pool HTTP Errors = %lu\n", errs);
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(3000));
   }
 }
@@ -117,19 +214,32 @@ std::size_t callback(const char *in, std::size_t size, std::size_t num,
   return totalBytes;
 }
 }  // namespace
-bool Miner::getwork() {
-  CURL *curl = curl_easy_init();
+
+// initcurl sets the curl handle for the getwork() calls
+void Miner::initcurl(CURL *curl, int typ) {
+  // headers
+
   struct curl_slist *headers = nullptr;
   headers = curl_slist_append(headers, "User-Agent: AquaMinerPro/2.0");
   headers = curl_slist_append(headers, "Content-Type: application/json");
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
-                   "{\"jsonrpc\":\"2.0\",\"method\":\"aqua_getWork\","
-                   "\"params\":[],\"id\":42}");
+  if (typ == GETWORK) {
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
+                     "{\"jsonrpc\":\"2.0\",\"method\":\"aqua_getWork\","
+                     "\"params\":[],\"id\":42}");
+    logger->info("Initializing getwork curl handle");
+  } else if (typ == SUBMITWORK) {
+    logger->info("Initializing submitwork curl handle");
+  } else {
+    throw std::invalid_argument("INVALID HTTP REQUEST TYPE");
+  }
+
+  // method POST
   curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
 
   // Set remote URL.
   curl_easy_setopt(curl, CURLOPT_URL, poolUrl.c_str());
+  printf("poolURL:, %s\n", poolUrl.c_str());
 
   // Don't bother trying IPv6, which would increase DNS resolution time.
   curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
@@ -140,29 +250,29 @@ bool Miner::getwork() {
   // Follow HTTP redirects if necessary.
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
-  // Response information.
-  long httpCode(0);
-  std::unique_ptr<std::string> httpData(new std::string());
-
   // Hook up data handling function.
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
-  char errbuf[CURL_ERROR_SIZE];
-  curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
-  errbuf[0] = 0;  // empty string
+}
 
+bool Miner::getwork() {
   // Hook up data container (will be passed as the last parameter to the
   // callback handling function).  Can be any pointer type, since it will
   // internally be passed as a void pointer.
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, httpData.get());
+  std::unique_ptr<std::string> httpData(new std::string());
+  curl_easy_setopt(getworkcurl, CURLOPT_WRITEDATA, httpData.get());
+  char errbuf[CURL_ERROR_SIZE];
+  curl_easy_setopt(getworkcurl, CURLOPT_ERRORBUFFER, errbuf);
+  errbuf[0] = 0;  // empty string
 
-  // Run our HTTP GET command, capture the HTTP response code, and clean up.
+  // Response information.
   CURLcode res;
+  long httpCode(0);
 
-  res = curl_easy_perform(curl);
+  // Run our HTTP POST command, capture the HTTP response code
+  res = curl_easy_perform(getworkcurl);
+  curl_easy_getinfo(getworkcurl, CURLINFO_RESPONSE_CODE, &httpCode);
 
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-  curl_easy_cleanup(curl);
-
+  // parse JSON response
   string rawJson = *httpData.get();
   int rawJsonLength = rawJson.length();
   if (res != CURLE_OK || httpCode != 200) {
@@ -239,7 +349,8 @@ static const char *submitfmt =
     */
 
 auto noncelog = spdlog::stdout_color_mt("SUBMIT");
-bool submitwork(WorkPacket *work, string endpoint, const bool verbose) {
+bool submitwork(WorkPacket *work, string endpoint, const bool verbose,
+                CURL *submitcurl) {
 #ifdef DEBUG
   print_hex(&work->buf[32], 8);
 #endif
@@ -252,16 +363,11 @@ bool submitwork(WorkPacket *work, string endpoint, const bool verbose) {
   }
 
   // to hex
-  char noncehex[17]; // plus one for the zero
+  char noncehex[17];  // plus one for the zero
   to_hex(noncebuf, noncehex, 8);
 
   // curl request
-  CURL *curl = curl_easy_init();
-  struct curl_slist *headers = nullptr;
-  headers = curl_slist_append(headers, "User-Agent: AquaMinerPro/2.0");
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  char buf[233]; // pool max is 256, but its always the same size (?)
-  printf("1\n");
+  char buf[233];  // pool max is 256, but its always the same size (?)
   sprintf(
       buf,
       "{\"jsonrpc\":\"2.0\", \"id\" : 42, \"method\" : \"aqua_submitWork\", "
@@ -271,41 +377,26 @@ bool submitwork(WorkPacket *work, string endpoint, const bool verbose) {
       "]"
       "}",
       noncehex, work->inputStr);
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, buf);
-
-  curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
-
-  // Set remote URL.
-  curl_easy_setopt(curl, CURLOPT_URL, endpoint.c_str());
-
-  // Don't bother trying IPv6, which would increase DNS resolution time.
-  curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-
-  // Don't wait forever, time out after 10 seconds.
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
-
-  // Follow HTTP redirects if necessary.
-  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(submitcurl, CURLOPT_POSTFIELDS, buf);
 
   // Response information.
   long httpCode(0);
   std::unique_ptr<std::string> httpData(new std::string());
 
   // Hook up data handling function.
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
+  curl_easy_setopt(submitcurl, CURLOPT_WRITEFUNCTION, callback);
 
   // Hook up data container (will be passed as the last parameter to the
   // callback handling function).  Can be any pointer type, since it will
   // internally be passed as a void pointer.
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, httpData.get());
+  curl_easy_setopt(submitcurl, CURLOPT_WRITEDATA, httpData.get());
 
   // Run our HTTP GET command, capture the HTTP response code, and clean up.
-  curl_easy_perform(curl);
+  curl_easy_perform(submitcurl);
 
-  printf("2\n");
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-  curl_easy_cleanup(curl);
+  curl_easy_getinfo(submitcurl, CURLINFO_RESPONSE_CODE, &httpCode);
+
+  //
   string rawJson = *httpData.get();
   int rawJsonLength = rawJson.length();
   if (httpCode != 200) {

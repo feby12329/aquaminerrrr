@@ -17,11 +17,14 @@
 
 #ifndef M_MINER_H
 #define M_MINER_H
+#include <curl/curl.h>
 #include <gmp.h>
 #include <spdlog/spdlog.h>
+
 #include <cstring>
 #include <mutex>
 #include <string>
+
 #include "aqua.hpp"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #define HASH_LEN (32)
@@ -45,20 +48,27 @@ class WorkPacket {
 };
 
 bool getwork(const std::string endpoint, WorkPacket *work, const bool verbose);
+bool submitwork(WorkPacket *work, std::string endpoint, const bool verbose,
+                CURL *curl);
 
 // Miner Class
 class Miner {
  public:
-  Miner();
+  Miner(const std::string url, const uint8_t nThreads, const uint8_t nCPU,
+        const bool verboseLogs, const bool benching);
   ~Miner();
-  bool verbose;
-  std::string poolUrl;
-  uint8_t numThreads;
   void start(void);
-  int num_cpus;
 
  private:
+  bool verbose;
+  bool benching;
+  std::string poolUrl;
+  uint8_t numThreads;
+  int num_cpus;
   bool getwork();
+  CURL *getworkcurl;
+  CURL *submitcurl;
+  void initcurl(CURL *, int);                  // int typ defined in http.cpp
   std::shared_ptr<spdlog::logger> logger;      // for miner
   std::shared_ptr<spdlog::logger> getworklog;  // for getwork
   std::mutex workmu;
@@ -69,36 +79,39 @@ class Miner {
       spdlog::debug("no work yet...");
       return false;
     }
-    if (strcmp(currentWork->inputStr, work_t->inputStr) != 0) {
-      logger->info("CPU {} new work: algo '{}' diff: {} input: {}", thread_id,
-                   currentWork->version,
-                   mpzToString(currentWork->difficulty).c_str(),
-                   std::string(currentWork->inputStr).substr(0, 8));
-      work_t->version = currentWork->version;
-      strcpy(work_t->inputStr, currentWork->inputStr);
-      memcpy(work_t->input, currentWork->input, 32);
-      memcpy(work_t->buf, currentWork->input, 32);
-      work_t->input = currentWork->input;
-      work_t->version = currentWork->version;
-      mpz_set(work_t->difficulty, currentWork->difficulty);
-      mpz_set(work_t->target, currentWork->target);
+    if (strcmp(currentWork->inputStr, work_t->inputStr) == 0) {
+      workmu.unlock();
+      return true;
     }
+    // print new work
+    // TODO: move to getwork thread
+    logger->info("CPU {} new work: algo '{}' diff: {} input: {}", thread_id,
+                 currentWork->version,
+                 mpzToString(currentWork->difficulty).c_str(),
+                 std::string(currentWork->inputStr).substr(0, 8));
+    work_t->version = currentWork->version;
+    strcpy(work_t->inputStr, currentWork->inputStr);
+    memcpy(work_t->input, currentWork->input, 32);
+    memcpy(work_t->buf, currentWork->input, 32);
+    work_t->input = currentWork->input;
+    work_t->version = currentWork->version;
+    mpz_set(work_t->difficulty, currentWork->difficulty);
+    mpz_set(work_t->target, currentWork->target);
     workmu.unlock();
     return true;
   };
   void minerThread(uint8_t id);
   void getworkThread(const char *id);
-  void submitworkThread(const char *id);
+  //  void submitworkThread(const char *id);
   WorkPacket *currentWork;
 
   std::atomic<unsigned long long> numTries;
   void submitTries(uint8_t thread_id, uint64_t numTries);
 };
 
-bool submitwork(WorkPacket *work, std::string endpoint, const bool verbose);
 // bool getwork(const std::string endpoint, WorkPacket *work, const bool
 // verbose);
 
 std::string mpzToString(mpz_t num);
 
-#endif
+#endif  // header

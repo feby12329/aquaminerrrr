@@ -22,7 +22,7 @@ CFLAGS += -mavx
 suffix := -avx
 else ifeq ($(config), debug)
 CFLAGS += -ggdb
-suffix := debug
+suffix := -debug
 else
 CFLAGS := -march=native
 suffix := -plain

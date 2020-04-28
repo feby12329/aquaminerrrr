@@ -16,12 +16,13 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "aqua.hpp"
+
 #include <assert.h>
 #include <gmp.h>
+
 #include <cstdio>  /* printf, NULL */
 #include <cstdlib> /* strtoull */
 #include <cstring>
-#include <stdexcept>
 
 void mpz_maxBest(mpz_t mpz_n) {
   mpz_t mpz_two, mpz_exponent;
@@ -122,24 +123,6 @@ std::string mpzToString(mpz_t num) {
   int ret = gmp_snprintf(buf, sizeof(buf), "%Zd", num);
   assert(ret < static_cast<int>(sizeof(buf)));
   return buf;
-}
-
-std::pair<bool, Bytes> hexToBytes(std::string s) {
-  Bytes res;
-  if (strncmp(s.c_str(), "0x", 2) == 0) s = s.substr(2);
-
-  if ((s.size() & 1) != 0) {
-    return {false, res};
-  }
-  for (size_t i = 0; i < s.size() / 2; i++) {
-    unsigned int v;
-    char n[3] = {s[i * 2], s[i * 2 + 1], 0};
-    int nRead = sscanf(n, "%x", &v);
-    if (nRead != 1) return {false, res};
-    // assert(v >= 0 && v <= 0xff);
-    res.push_back((byte)v);
-  }
-  return {true, res};
 }
 
 void decodeHex(const char *encoded, mpz_t mpz_res) {

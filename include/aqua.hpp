@@ -18,10 +18,10 @@
 #ifndef SMALLTHINGS_H
 #define SMALLTHINGS_H
 #include <gmp.h>
-#include <sys/types.h>
+
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
+#include <string>
 #include <vector>
 static const unsigned char hex_digits[] = {'0', '1', '2', '3', '4', '5',
                                            '6', '7', '8', '9', 'A', 'B',
@@ -50,5 +50,4 @@ std::string mpzToString(mpz_t num);
 typedef unsigned char byte;
 typedef std::vector<byte> Bytes;
 
-std::pair<bool, Bytes> hexToBytes(std::string s);
 #endif  // SMALLTHINGS_H
