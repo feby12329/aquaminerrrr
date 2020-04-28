@@ -7,7 +7,7 @@ VERSION := $(shell cat VERSION)-$(VERSION)
 WD := $(PWD)
 # path to curl lib (has ./bin/curl-config and ./lib/libcurl.a)
 CURLDIR?=/tmp/curl
-CXXFLAGS := -O3 -std=c++11 -pedantic -Wall -Iinclude -I. -Iaquahash/include -Ispdlog/include -I${CURLDIR}/include -pthread -static -DVERSION=\""$(VERSION)"\"
+CXXFLAGS := -O3 -std=c++11 -pedantic -Wall -Werror -Iinclude -I. -Iaquahash/include -Ispdlog/include -I${CURLDIR}/include -pthread -static -DVERSION=\""$(VERSION)"\"
 CFLAGS += -O3
 SRCDIR := src
 OBJDIR := _obj
@@ -20,6 +20,9 @@ suffix := -avx2
 else ifeq ($(config), avx)
 CFLAGS += -mavx
 suffix := -avx
+else ifeq ($(config), debug)
+CFLAGS += -ggdb
+suffix := debug
 else
 CFLAGS := -march=native
 suffix := -plain
@@ -87,3 +90,6 @@ distclean:
 
 /tmp/curl:
 	bash setup_libs.bash
+
+debug:
+	$(MAKE) config=debug
