@@ -243,20 +243,25 @@ bool submitwork(WorkPacket *work, string endpoint, const bool verbose) {
 #ifdef DEBUG
   print_hex(&work->buf[32], 8);
 #endif
-  char noncehex[16];
+  // flip endianness
   uint8_t noncebuf[8];
   int j = 0;
   for (int i = 7; i >= 0; i--) {
     noncebuf[i] = work->buf[32 + j];
     j++;
   }
-  // to_hex(&work->buf[32], noncehex, 8);
+
+  // to hex
+  char noncehex[17]; // plus one for the zero
   to_hex(noncebuf, noncehex, 8);
+
+  // curl request
   CURL *curl = curl_easy_init();
   struct curl_slist *headers = nullptr;
   headers = curl_slist_append(headers, "User-Agent: AquaMinerPro/2.0");
   headers = curl_slist_append(headers, "Content-Type: application/json");
-  char buf[233];
+  char buf[233]; // pool max is 256, but its always the same size (?)
+  printf("1\n");
   sprintf(
       buf,
       "{\"jsonrpc\":\"2.0\", \"id\" : 42, \"method\" : \"aqua_submitWork\", "
@@ -297,6 +302,8 @@ bool submitwork(WorkPacket *work, string endpoint, const bool verbose) {
 
   // Run our HTTP GET command, capture the HTTP response code, and clean up.
   curl_easy_perform(curl);
+
+  printf("2\n");
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
   curl_easy_cleanup(curl);
   string rawJson = *httpData.get();
