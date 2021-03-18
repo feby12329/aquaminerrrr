@@ -45,6 +45,7 @@ int main(int argc, char **argv) {
   string filename = "aquaminer.conf";
   bool verbose = false;
   bool bench = false;
+  bool showversion = false;
   bool mkconfig = false;
   string poolurl = "http://127.0.0.1:8543";
   uint8_t numThreads = 1;
@@ -53,7 +54,8 @@ int main(int argc, char **argv) {
   // flags
   CLI::App app{appname};
   app.allow_config_extras(true);
-  app.add_flag("-v,--verbose", verbose, "Verbose logging");
+  app.add_flag("-v,--verbose", verbose, "verbose logging");
+  app.add_flag("-V,--version", showversion, "show version and exit");
   app.add_flag("--mkconf", mkconfig,
                "create config based on given flags and exit");
   app.add_flag("-B,--bench", bench, "hash 1M times and quit");
@@ -67,6 +69,9 @@ int main(int argc, char **argv) {
   if (mkconfig) {
     app.remove_option(app.get_option("--mkconf"));
     return cout << app.config_to_str(true, true) ? 0 : 111;
+  }
+  if (showversion) {
+    return cout << appname << endl ? 0 : 222;
   }
 
   // print config
