@@ -40,10 +40,6 @@
 #include <sys/types.h>
 #endif
 
-using std::move;
-using std::thread;
-using std::vector;
-
 WorkPacket::WorkPacket() {
   this->input =
       static_cast<uint8_t *>(malloc(HASH_INPUT_LEN * sizeof(uint8_t)));
@@ -68,14 +64,15 @@ void Miner::start(void) {
     num_cpus = numThreads;
   }
 
-  thread gwt(&Miner::getworkThread, this, "getwork()");
+  std::thread gwt(&Miner::getworkThread, this, "getwork()");
   // start threads
   logger->info("starting {} threads..", numThreads);
-  vector<thread *> threads;
+  std::vector<std::thread *> threads;
   threads.resize(numThreads);
-  vector<thread> threadList(numThreads);
+  std::vector<std::thread> threadList(numThreads);
   for (uint8_t i = 0; i < numThreads; i++) {
-    threads[static_cast<int>(i)] = new thread(&Miner::minerThread, this, i + 1);
+    threads[static_cast<int>(i)] =
+        new std::thread(&Miner::minerThread, this, i + 1);
   }
 
   logger->info("waiting for getwork to finish");
