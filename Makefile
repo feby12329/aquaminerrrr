@@ -17,15 +17,18 @@ suffix := -unknown
 ifeq ($(config), avx2)
 CFLAGS += -mavx2
 suffix := -avx2
+OPTTARGET := avx2
 else ifeq ($(config), avx)
 CFLAGS += -mavx
 suffix := -avx
+OPTTARGET := avx
 else ifeq ($(config), debug)
 CFLAGS += -ggdb
 suffix := -debug
 else
 CFLAGS := -march=native
 suffix := -plain
+#OPTTARGET := 0
 endif
 $(info Building: $(NAME)-$(VERSION)$(suffix))
 
