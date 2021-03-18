@@ -400,7 +400,7 @@ bool submitwork(WorkPacket *work, string endpoint, const bool verbose,
   string rawJson = *httpData.get();
   int rawJsonLength = rawJson.length();
   if (httpCode != 200) {
-    noncelog->error("Pool returned bad status code: {}");
+    noncelog->error("Pool returned bad status code: {}", httpCode);
     if (rawJsonLength != 0) {
       std::cout << "HTTP data was:\n" << rawJson << std::endl;
     }
