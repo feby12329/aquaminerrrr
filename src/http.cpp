@@ -125,8 +125,14 @@ void Miner::getworkThread(const char *thread_id) {
   float fps = 0.0;
   char fpsbuf[100];
 
-  // bench mark 1M and exit
+  // bench mark and exit
   if (benching) {
+    // bench 10M hashes. unless we are in a travis build
+    // in that case, just make sure 1000 hashes works.
+    unsigned long long numHashesTotal = 10000000;
+    if (std::getenv("TRAVIS_COMPILER") != nullptr) {
+      numHashesTotal = 1000;
+    }
     workmu.lock();
     uint8_t in[40];
     uint8_t out[32];
@@ -135,7 +141,7 @@ void Miner::getworkThread(const char *thread_id) {
     printf("Aquahash v2 Benchmark zero[32]=");
     print_hex(out, 32);
 
-    logger->info("Starting 1M hashes");
+    logger->info("Starting {} hashes", numHashesTotal);
     for (int i = 0; i < 31; i = i + 2) {
       this->currentWork->inputStr[i] = '1';
       this->currentWork->inputStr[i + 2] = '1';
@@ -144,7 +150,7 @@ void Miner::getworkThread(const char *thread_id) {
     // t1
     t1 = std::chrono::high_resolution_clock::now();
     // wait for hashes
-    while (totalHash < 1000000) {
+    while (totalHash < numHashesTotal) {
       totalHash += this->numTries;
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
