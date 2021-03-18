@@ -29,6 +29,7 @@ else
 CFLAGS := -march=native
 suffix := -plain
 #OPTTARGET := 0
+$(info Warning: not optimizing, try config=avx2)
 endif
 $(info Building: $(NAME)-$(VERSION)$(suffix))
 
