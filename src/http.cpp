@@ -76,15 +76,15 @@ Miner::Miner(const std::string url, const uint8_t nThreads, const uint8_t nCPU,
   this->getworklog = spdlog::stderr_color_mt("GETWORK");
 
   this->getworkcurl = curl_easy_init();
-  this->submitcurl = curl_easy_init();
   this->initcurl(this->getworkcurl, GETWORK);
-  this->initcurl(this->submitcurl, SUBMITWORK);
+  // this->submitcurl = curl_easy_init();
+  // this->initcurl(this->submitcurl, SUBMITWORK);
 }
 
 Miner::~Miner() {
   printf("Miner dead!\n");
   curl_easy_cleanup(this->getworkcurl);
-  curl_easy_cleanup(this->submitcurl);
+  // curl_easy_cleanup(this->submitcurl);
 }
 
 int aquahash_version(void *out, const void *in, uint32_t mem);
@@ -226,16 +226,16 @@ void Miner::initcurl(CURL *curl, int typ) {
   // headers
 
   struct curl_slist *headers = nullptr;
-  headers = curl_slist_append(headers, "User-Agent: AquaMinerPro/2.0");
+  headers = curl_slist_append(headers, "User-Agent: AquaMinerPro/" VERSION);
   headers = curl_slist_append(headers, "Content-Type: application/json");
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
   if (typ == GETWORK) {
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
                      "{\"jsonrpc\":\"2.0\",\"method\":\"aqua_getWork\","
                      "\"params\":[],\"id\":42}");
-    logger->info("Initializing getwork curl handle");
+    logger->debug("Initializing getwork curl handle");
   } else if (typ == SUBMITWORK) {
-    logger->info("Initializing submitwork curl handle");
+    logger->debug("Initializing submitwork curl handle");
   } else {
     throw std::invalid_argument("INVALID HTTP REQUEST TYPE");
   }
@@ -245,7 +245,6 @@ void Miner::initcurl(CURL *curl, int typ) {
 
   // Set remote URL.
   curl_easy_setopt(curl, CURLOPT_URL, poolUrl.c_str());
-  printf("poolURL:, %s\n", poolUrl.c_str());
 
   // Don't bother trying IPv6, which would increase DNS resolution time.
   curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
@@ -398,7 +397,11 @@ bool submitwork(WorkPacket *work, string endpoint, const bool verbose,
   curl_easy_setopt(submitcurl, CURLOPT_WRITEDATA, httpData.get());
 
   // Run our HTTP GET command, capture the HTTP response code, and clean up.
-  curl_easy_perform(submitcurl);
+  CURLcode res = curl_easy_perform(submitcurl);
+  if (res != CURLE_OK) {
+    noncelog->error("Pool connection failed");
+    return false;
+  }
 
   curl_easy_getinfo(submitcurl, CURLINFO_RESPONSE_CODE, &httpCode);
 
@@ -406,7 +409,8 @@ bool submitwork(WorkPacket *work, string endpoint, const bool verbose,
   string rawJson = *httpData.get();
   int rawJsonLength = rawJson.length();
   if (httpCode != 200) {
-    noncelog->error("Pool returned bad status code: {}", httpCode);
+    noncelog->error("Pool returned ({} bytes) bad status code: {}",
+                    rawJsonLength, httpCode);
     if (rawJsonLength != 0) {
       std::cout << "HTTP data was:\n" << rawJson << std::endl;
     }
