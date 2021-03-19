@@ -17,11 +17,11 @@ suffix := -unknown
 ifeq ($(config), avx2)
 CFLAGS += -mavx2
 suffix := -avx2
-OPTTARGET := avx2
+OPTTARGET := core-avx2
 else ifeq ($(config), avx)
 CFLAGS += -mavx
 suffix := -avx
-OPTTARGET := avx
+#OPTTARGET := core-avx # TODO
 else ifeq ($(config), debug)
 CFLAGS += -ggdb
 suffix := -debug
