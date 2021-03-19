@@ -241,21 +241,18 @@ void Miner::minerThread(uint8_t thread_id) {
 #endif
     logger->info("thread {} found new solution", thread_id);
     // std::thread(submitwork, work, poolUrl).detach();
-    if (!submitwork(work, poolUrl, verbose, this->submitcurl)) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(400));
-      if (!this->getwork()) {
-        printf(
-            "submit work() failed, getwork() failed, not able to fetch "
-            "work. sleeping for 1s\n");
-        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-      } else {
-        std::this_thread::sleep_for(std::chrono::milliseconds(600));
-      }
+    CURL *tmpsubmitcurl = curl_easy_init();
+    this->initcurl(tmpsubmitcurl, 2);
+    bool poolret = submitwork(work, poolUrl, verbose, tmpsubmitcurl);
+    curl_easy_cleanup(tmpsubmitcurl);
+    if (!poolret) {
+      logger->warn("submitwork failed, this miner thread sleeping 2s");
+      std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
-
-    // if invalid diff, increase nonce
-    // roll nonce
-    // (*(uint64_t *)&work->buf[32])++;
   }
+  // std::this_thread::sleep_for(std::chrono::milliseconds(60));
+
+  // if invalid diff, increase nonce
+  // roll nonce
+  // (*(uint64_t *)&work->buf[32])++;
 }
