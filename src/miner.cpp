@@ -152,6 +152,7 @@ void Miner::minerThread(uint8_t thread_id) {
 
   uint64_t nonce_int = 0;
   uint64_t tries = 0;
+  uint64_t triesHashes = 0;
 
   // so all the threads dont report at the same time
   uint64_t reportTriesMod = static_cast<uint64_t>(thread_id + (1 * 1000));
@@ -178,13 +179,15 @@ void Miner::minerThread(uint8_t thread_id) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         continue;
       }
+      tries = 0;
     }
 
     // report hashrate every 10k hashes (per thread)
-    if (tries % 20000 == reportTriesMod) {
-      this->numTries += tries;
-      tries = 0;
+    if (triesHashes % 20000 == reportTriesMod) {
+      this->numTries += triesHashes;
+      triesHashes = 0;
     }
+    tries++;
 
     // Aquahash Version Switch (See Aquachain HF)
     //
@@ -215,7 +218,7 @@ void Miner::minerThread(uint8_t thread_id) {
       printf("argon2 failed\n");
       exit(111);
     }
-    tries++;
+    triesHashes++;
 
     // TODO: memcmp
     mpz_fromBytesNoInit(work->output, HASH_LEN, mpz_result);
@@ -248,6 +251,13 @@ void Miner::minerThread(uint8_t thread_id) {
     if (!poolret) {
       logger->warn("submitwork failed, this miner thread sleeping 2s");
       std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+      continue;
+    }
+    if (solomining) {
+      work->version = 0;  // pauses
+      logger->info(
+          "mined a block. sleeping 1 second for getwork thread to catch up");
+      continue;
     }
   }
   // std::this_thread::sleep_for(std::chrono::milliseconds(60));

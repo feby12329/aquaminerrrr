@@ -65,12 +65,13 @@ atomic_ullong sharesValid;
 atomic_ullong errCount;
 
 Miner::Miner(const std::string url, const uint8_t nThreads, const uint8_t nCPU,
-             const bool verboseLogs, const bool bench) {
+             const bool verboseLogs, const bool bench, const bool solo) {
   poolUrl = url;
   numThreads = nThreads;
   num_cpus = nCPU;
   verbose = verboseLogs;
   benching = bench;
+  solomining = solo;
   this->currentWork = new WorkPacket();
   this->logger = spdlog::stderr_color_mt("MINER");
   this->getworklog = spdlog::stderr_color_mt("GETWORK");
@@ -170,9 +171,12 @@ void Miner::getworkThread(const char *thread_id) {
            totalHash, sec, totalHash / sec / 1000);
     return;
   }
+  logger->info("getwork loop starting");
   while (true) {
     if (!this->getwork()) {
       logger->warn("getwork() failed");
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      continue;
     };
     // print hashrate
     t1 = std::chrono::high_resolution_clock::now();

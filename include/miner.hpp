@@ -55,13 +55,14 @@ bool submitwork(WorkPacket *work, std::string endpoint, const bool verbose,
 class Miner {
  public:
   Miner(const std::string url, const uint8_t nThreads, const uint8_t nCPU,
-        const bool verboseLogs, const bool benching);
+        const bool verboseLogs, const bool benching, const bool solo);
   ~Miner();
   void start(void);
 
  private:
   bool verbose;
   bool benching;
+  bool solomining;
   std::string poolUrl;
   uint8_t numThreads;
   int num_cpus;

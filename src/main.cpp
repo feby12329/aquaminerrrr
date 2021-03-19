@@ -46,6 +46,7 @@ int main(int argc, char **argv) {
   bool verbose = false;
   bool bench = false;
   bool showversion = false;
+  bool solo = false;
   bool mkconfig = false;
   string poolurl = "http://127.0.0.1:8543";
   uint8_t numThreads = 1;
@@ -55,6 +56,7 @@ int main(int argc, char **argv) {
   CLI::App app{appname};
   app.allow_config_extras(true);
   app.add_flag("-v,--verbose", verbose, "verbose logging");
+  app.add_flag("--solo", solo, "solomining: successful share = 1 block");
   app.add_flag("-V,--version", showversion, "show version and exit");
   app.add_flag("--mkconf", mkconfig,
                "create config based on given flags and exit");
@@ -79,7 +81,7 @@ int main(int argc, char **argv) {
   cout << app.config_to_str(true, true);
 
   // start mining
-  Miner *miner = new Miner(poolurl, numThreads, numCPU, verbose, bench);
+  Miner *miner = new Miner(poolurl, numThreads, numCPU, verbose, bench, solo);
   cout << appname << endl << sourcelink << endl;
   if (verbose) {
     spdlog::set_level(spdlog::level::debug);
