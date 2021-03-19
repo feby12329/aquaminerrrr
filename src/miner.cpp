@@ -173,9 +173,11 @@ void Miner::minerThread(uint8_t thread_id) {
     print_hex(&work->buf[32], 8);
 #endif
 
-    if (tries % 20000 == 0) {
+    if (tries % 100000 == 0) {
       // see if we got new work
       if (!this->getCurrentWork(work, thread_id)) {
+        logger->info("getCurrentWork failed");
+        logger->debug("getCurrentWork({}, {})...", work->inputStr, thread_id);
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         continue;
       }

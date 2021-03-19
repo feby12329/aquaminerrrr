@@ -74,14 +74,14 @@ class Miner {
   std::shared_ptr<spdlog::logger> getworklog;  // for getwork
   std::mutex workmu;
   bool getCurrentWork(WorkPacket *work_t, uint8_t thread_id) {
-    workmu.lock();
+    // workmu.lock();
     if (currentWork->version == 0) {
-      workmu.unlock();
+      // workmu.unlock();
       spdlog::debug("no work yet...");
       return false;
     }
     if (strcmp(currentWork->inputStr, work_t->inputStr) == 0) {
-      workmu.unlock();
+      // workmu.unlock();
       return true;
     }
     // print new work
@@ -91,14 +91,14 @@ class Miner {
                  mpzToString(currentWork->difficulty).c_str(),
                  std::string(currentWork->inputStr).substr(0, 8));
     work_t->version = currentWork->version;
-    strcpy(work_t->inputStr, currentWork->inputStr);
     memcpy(work_t->input, currentWork->input, 32);
     memcpy(work_t->buf, currentWork->input, 32);
     work_t->input = currentWork->input;
     work_t->version = currentWork->version;
     mpz_set(work_t->difficulty, currentWork->difficulty);
     mpz_set(work_t->target, currentWork->target);
-    workmu.unlock();
+    strcpy(work_t->inputStr, currentWork->inputStr);
+    // workmu.unlock();
     return true;
   };
   void minerThread(uint8_t id);

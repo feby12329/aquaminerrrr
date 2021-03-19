@@ -315,18 +315,17 @@ bool Miner::getwork() {
     return false;
   }
 
+  if (verbose) {
+    logger->debug("Got successful response from {}", poolUrl);
+    logger->debug("Successfully parsed JSON data:");
+    std::cout << jsonData.toStyledString() << std::endl;
+  }
   this->workmu.lock();
   // got work, copy to currentWork
   if (0 == strcmp(currentWork->inputStr, val[0].asString().c_str())) {
     logger->debug("no new work {}", currentWork->inputStr);
     this->workmu.unlock();
     return true;
-  }
-
-  if (verbose) {
-    logger->debug("Got successful response from {}", poolUrl);
-    logger->debug("Successfully parsed JSON data:");
-    std::cout << jsonData.toStyledString() << std::endl;
   }
 
   // do it
