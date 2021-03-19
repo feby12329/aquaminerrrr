@@ -16,8 +16,8 @@ addons:
     - build-essential
     - zlib1g-dev
 script:
-- bash .travis.bash
-- mv aquachain-miner-linux-amd64.tar.gz aquachain-miner-ubuntu-amd64.tar.gz
+  #- bash .travis.bash
+  #- mv aquachain-miner-linux-amd64.tar.gz aquachain-miner-ubuntu-amd64.tar.gz
 - mkdir /tmp/debian
 - git clone . /tmp/debian
 - docker run -v $TRAVIS_BUILD_DIR:/release/ -v /tmp/debian:/src debian:stable bash /release/docker-run.bash
